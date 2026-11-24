@@ -26,6 +26,8 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);overflow:hi
 .help{font-size:.72em;color:var(--muted);line-height:1.7;max-width:56em}
 .charwrap{align-items:center;gap:1.4em}
 .screen{touch-action:pan-y}
+.screen.typing{justify-content:flex-start;gap:.4em;padding-top:.4em}
+.screen.typing h2,.screen.typing .note{display:none}
 .man{font-size:.74em;line-height:1.55;max-width:46em;text-align:left;color:var(--ink);background:rgba(18,12,40,.86);border:.14em solid var(--line);padding:.6em 1.1em}
 .man b{font-weight:400;background:var(--panel2);padding:0 .35em;border:1px solid var(--line);white-space:nowrap}
 .man em{font-style:normal;color:var(--gold)}
@@ -97,13 +99,15 @@ h2{margin:0;font-weight:400;font-size:1.25em;letter-spacing:.12em;color:var(--go
 #touch{position:absolute;inset:0;pointer-events:none}
 .tb{position:absolute;pointer-events:auto;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.45);color:#fff;font-family:var(--jp);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;touch-action:none;padding:0}
 .tb.on{background:rgba(255,201,60,.45)}
-#tL{left:2%;bottom:6%;width:15%;aspect-ratio:1}
-#tR{left:19%;bottom:6%;width:15%;aspect-ratio:1}
+/* left thumb: a cross like a d-pad - ◀ ▶ steer, ▲ ▼ above and below them aim the item */
+#tL{left:2%;bottom:21%;width:15%;aspect-ratio:1}
+#tR{left:19%;bottom:21%;width:15%;aspect-ratio:1}
+#tF{left:13%;bottom:49%;width:10%;aspect-ratio:1}
+#tD{left:13%;bottom:2.5%;width:10%;aspect-ratio:1}
 #tA{right:2%;bottom:6%;width:15%;aspect-ratio:1}
 #tB{right:18.5%;bottom:3%;width:11%;aspect-ratio:1}
 #tJ{right:3%;bottom:32%;width:12%;aspect-ratio:1}
 #tI{right:17%;bottom:24%;width:11%;aspect-ratio:1}
-#tV{right:30%;bottom:20%;width:9%;aspect-ratio:1;font-size:10px}
 #tP{left:2%;top:22%;width:8%;aspect-ratio:1.6;border-radius:6px}
 #tM{left:11%;top:22%;width:9%;aspect-ratio:1.6;border-radius:6px;font-size:10px}
 #corner{position:fixed;right:max(10px,env(safe-area-inset-right,0px));top:max(10px,env(safe-area-inset-top,0px));z-index:5;display:flex;gap:6px}
@@ -126,6 +130,7 @@ h2{margin:0;font-weight:400;font-size:1.25em;letter-spacing:.12em;color:var(--go
         <button class="btn" id="btnOnline">オンライン対戦</button>
       </div>
       <div class="row"><button class="btn small" id="btnManual">あそびかた（操作説明）</button></div>
+      <div class="note" id="keyHint" style="color:var(--ink);text-shadow:.1em .1em 0 #2a1060">キーボード：←→↑↓ でえらぶ　Enter / Z でけってい</div>
     </section>
 
     <section class="screen" id="scManual" hidden>
@@ -189,8 +194,8 @@ h2{margin:0;font-weight:400;font-size:1.25em;letter-spacing:.12em;color:var(--go
       <h2>オンライン対戦</h2>
       <div id="netNone" class="help" hidden>このページではオンライン対戦につながりません。通信用のプログラムを読み込めていない可能性があります。ページを読み込み直してみてください。</div>
       <div id="lobbyOut" class="col">
-        <label class="fld">ニックネーム <input id="nick" maxlength="10" autocomplete="off"></label>
-        <label class="fld">ルームコード <input id="roomCode" maxlength="6" autocomplete="off" autocapitalize="none" spellcheck="false" inputmode="url" placeholder="例: k7mq"></label>
+        <label class="fld">ニックネーム <input id="nick" type="text" maxlength="10" autocomplete="off" enterkeyhint="done"></label>
+        <label class="fld">ルームコード <input id="roomCode" type="text" maxlength="6" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="url" enterkeyhint="go" placeholder="例: k7mq"></label>
         <div class="row">
           <button class="btn" id="btnRand">コードを作る</button>
           <button class="btn primary" id="btnJoin">入室</button>
@@ -244,7 +249,8 @@ h2{margin:0;font-weight:400;font-size:1.25em;letter-spacing:.12em;color:var(--go
     <button class="tb" id="tB" data-k="brake">ブレーキ</button>
     <button class="tb" id="tJ" data-k="hop">ジャンプ</button>
     <button class="tb" id="tI" data-k="item">アイテム</button>
-    <button class="tb" id="tV" data-k="itemB">うしろ</button>
+    <button class="tb" id="tF" data-k="aimF" aria-label="アイテムを前へ">▲</button>
+    <button class="tb" id="tD" data-k="aimB" aria-label="アイテムを後ろへ">▼</button>
     <button class="tb" id="tM" data-k="mirror">ミラー</button>
     <button class="tb" id="tP" data-k="pause">II</button>
   </div>
@@ -1206,29 +1212,23 @@ function aiWantsItem(k){
 function readPlayer(k,dt){
   const I=readRaw();
   if(I.axis!==null)k.steerSm=I.axis;else{const t=(I.right?1:0)-(I.left?1:0);k.steerSm+=clamp(t-k.steerSm,-dt*7,dt*7);}
-  /* item button (C):
-       tap                      -> the item's normal use (oil drops behind, ball/homing go forward)
-       hold                     -> oil/ball/homing trail behind the kart and block one hit from behind
-       release while holding ↑  -> throw forward;  release while holding ↓ -> throw backward
-       release with neither     -> normal use
-     turbo/coin/hyper fire the moment the button goes down. V (touch: うしろ) throws straight back. */
-  const pressed=I.item,backKey=I.itemB;let use=false,dir=null;
-  const holdable=!!HOLDABLE[k.item]&&k.roll<=0;
-  if(backKey&&!prevBack&&k.item&&k.roll<=0){use=true;dir='b';}
-  else{
-    if(pressed&&!prevItem){k.holdT=0;k.pressUsed=false;if(!holdable&&k.item){use=true;k.pressUsed=true;}}
-    if(pressed)k.holdT=(k.holdT||0)+dt;
-    if(!pressed&&prevItem&&holdable&&!k.pressUsed){use=true;if((k.holdT||0)>=TAP_T)dir=I.up&&!I.down?'f':I.down&&!I.up?'b':null;}
-  }
-  k.holding=holdable&&pressed&&k.spinT<=0;
+  /* item button (C), the way the 16-bit kart racers did it: the item goes the moment the button is pressed,
+     and the aim key held at that moment picks the direction -
+       C alone   -> the item's normal use (oil drops behind, bullet / missile go forward)
+       W + C     -> forward  (oil is lobbed ahead)
+       S + C     -> backward (bullet / missile fly straight back)
+     W / S are separate from the driving keys, so accelerating or braking never changes the aim.
+     Gamepad: d-pad or stick up / down aim. V (touch: うしろ) always throws straight back. */
+  const pressed=I.item,backKey=I.itemB,ready=!!k.item&&k.roll<=0;let use=false,dir=null;
+  if(backKey&&!prevBack&&ready){use=true;dir='b';}
+  else if(pressed&&!prevItem&&ready){use=true;dir=I.down&&!I.up?'b':I.up&&!I.down?'f':null;}
+  k.holding=false;
+  if(use&&aimArm){aimArm=null;for(const id of['tF','tD']){const b=document.getElementById(id);if(b&&!touch[b.dataset.k])b.classList.remove('on');}}
   prevItem=pressed;prevBack=backKey;
   if(use&&!dir)dir=DEFAULT_DIR[k.item]||'f';
-  /* while an item is held, ↓ only aims (X / brake button still brakes) */
-  const brake=k.holding||(use&&dir==='b'&&I.down)?I.brakeBtn:I.brake;
-  return{steer:k.steerSm,gas:I.gas,brake,hop:I.hop,use,dir};
+  return{steer:k.steerSm,gas:I.gas,brake:I.brake,hop:I.hop,use,dir};
 }
 let prevItem=false,prevBack=false;
-const TAP_T=.25;
 const HOLDABLE={oil:1,ball:1,missile:1};
 const DEFAULT_DIR={oil:'b',ball:'f',missile:'f'};
 const battleCmp=(a,b)=>{if(!!a.out!==!!b.out)return a.out?1:-1;if(!a.out)return b.balloons-a.balloons;return b.outT-a.outT;};
@@ -1415,9 +1415,13 @@ function update(dt){
 
 /* ===================== input ===================== */
 const keys={},touch={};
+/* touch aim: tapping ▲ / ▼ arms that direction for the next item press (1.5 s), so a phone needs no two-finger chord */
+let aimArm=null;
 function readRaw(){
-  const r={left:!!(keys.ArrowLeft||touch.left),right:!!(keys.ArrowRight||touch.right),gas:!!(keys.ArrowUp||keys.KeyZ||touch.gas),
-    brake:!!(keys.ArrowDown||keys.KeyX||touch.brake),brakeBtn:!!(keys.KeyX||touch.brake),hop:!!(keys.Space||keys.ShiftLeft||keys.ShiftRight||touch.hop),item:!!(keys.KeyC||touch.item),itemB:!!(keys.KeyV||touch.itemB),up:!!keys.ArrowUp,down:!!keys.ArrowDown,axis:null};
+  const arm=aimArm&&performance.now()<aimArm.until?aimArm.k:null;
+  /* keyboard layout: A / D steer (← → also work), ↑ accelerate, ↓ brake, W / S aim the item */
+  const r={left:!!(keys.KeyA||keys.ArrowLeft||touch.left),right:!!(keys.KeyD||keys.ArrowRight||touch.right),gas:!!(keys.ArrowUp||keys.KeyZ||touch.gas),
+    brake:!!(keys.ArrowDown||keys.KeyX||touch.brake),brakeBtn:!!(keys.KeyX||touch.brake),hop:!!(keys.Space||keys.ShiftLeft||keys.ShiftRight||touch.hop),item:!!(keys.KeyC||touch.item),itemB:!!(keys.KeyV||touch.itemB),up:!!(keys.KeyW||touch.aimF||arm==='aimF'),down:!!(keys.KeyS||touch.aimB||arm==='aimB'),axis:null};/* up / down = item aim (W / S), not the driving arrows */
   let pads=[];try{pads=navigator.getGamepads?navigator.getGamepads():[];}catch(e){}
   for(const p of pads){if(!p)continue;const b=i=>p.buttons[i]&&p.buttons[i].pressed;const ax=p.axes[0]||0;
     if(Math.abs(ax)>.18)r.axis=ax;if(b(14))r.left=true;if(b(15))r.right=true;
@@ -1429,7 +1433,15 @@ const GAMEKEYS=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'];
 addEventListener('keydown',e=>{
   Snd.unlock();
   const tag=e.target&&e.target.tagName;
-  if(tag==='INPUT'){if(e.code==='Enter'&&screen==='online'){e.preventDefault();joinFromForm();}return;}
+  if(tag==='INPUT'){
+    /* in a text box the keys type as usual; Enter joins, and up/down step to the next control */
+    /* phone on-screen keyboards often send no `code`, only `key`, for their Enter / Go key */
+    const text=e.target.type==='text'||e.target.type==='',code=e.code||(e.key==='Enter'?'Enter':'');
+    if(code==='Enter'&&screen==='online'){e.preventDefault();if(text)joinFromForm();else e.target.click();}
+    else if((code==='ArrowUp'||code==='ArrowDown')&&screen){e.preventDefault();navFocus(code==='ArrowDown'?1:-1);}
+    else if(!text&&(code==='ArrowLeft'||code==='ArrowRight')&&screen){e.preventDefault();navFocus(code==='ArrowRight'?1:-1);}
+    else if(code==='Escape'&&screen==='online'){$('oBack').click();}
+    return;}
   if(GAMEKEYS.includes(e.code)&&!(tag==='BUTTON'&&e.code==='Space'))e.preventDefault();
   keys[e.code]=true;if(e.repeat&&!e.code.startsWith('Arrow'))return;menuKey(e);
 });
@@ -1438,8 +1450,14 @@ addEventListener('blur',()=>{for(const k in keys)keys[k]=false;if(race&&!race.de
 addEventListener('pointerdown',()=>Snd.unlock(),{capture:true});
 document.querySelectorAll('.tb').forEach(b=>{
   const k=b.dataset.k;
-  const on=e=>{e.preventDefault();Snd.unlock();if(k==='pause'){if(race&&!race.paused)pauseGame();return;}if(k==='mirror'){toggleMirror();return;}touch[k]=true;b.classList.add('on');try{b.setPointerCapture(e.pointerId);}catch(_){}};
-  const off=()=>{touch[k]=false;b.classList.remove('on');};
+  const on=e=>{e.preventDefault();Snd.unlock();if(k==='pause'){if(race&&!race.paused)pauseGame();return;}if(k==='mirror'){toggleMirror();return;}
+    if(aim){aimArm=null;for(const id of['tF','tD'])document.getElementById(id).classList.remove('on');}
+    touch[k]=true;b.classList.add('on');try{b.setPointerCapture(e.pointerId);}catch(_){}};
+  const aim=k==='aimF'||k==='aimB';
+  const off=()=>{
+    if(aim){if(!touch[k])return;touch[k]=false;aimArm={k,until:performance.now()+1500};
+      setTimeout(()=>{if(!touch[k]&&!(aimArm&&aimArm.k===k&&performance.now()<aimArm.until))b.classList.remove('on');},1560);return;}
+    touch[k]=false;b.classList.remove('on');};
   b.addEventListener('pointerdown',on);b.addEventListener('pointerup',off);b.addEventListener('pointercancel',off);b.addEventListener('lostpointercapture',off);
   b.addEventListener('contextmenu',e=>e.preventDefault());
 });
@@ -1450,7 +1468,7 @@ const SCREENS={title:$('scTitle'),manual:$('scManual'),char:$('scChar'),course:$
 let charFor='solo';
 let screen='title';const sel={char:0,course:0,cls:1};
 const coarse=matchMedia('(pointer:coarse)').matches;
-if(coarse)$('pressStart').textContent='TAP START';
+if(coarse){$('pressStart').textContent='TAP START';$('keyHint').hidden=true;}
 function show(name){screen=name;for(const k in SCREENS)SCREENS[k].hidden=k!==name;
   $('touch').hidden=!(coarse&&name===null);
   $('corner').hidden=name===null;
@@ -1629,6 +1647,12 @@ const CODECH='abcdefghjkmnpqrstuvwxyz23456789';
 const cleanNick=s=>[...String(s||'')].filter(ch=>{const c=ch.codePointAt(0);return!(c<32||(c>=127&&c<160)||(c>=0x200b&&c<=0x200f)||(c>=0x2028&&c<=0x202e)||(c>=0x2060&&c<=0x206f)||c===0xfeff);}).join('').trim().slice(0,10);
 const TYPEI=['oil','ball','missile'];
 $('nick').value=cleanNick(store.get('pgp_nick'))||('プレイヤー'+(Math.random()*90+10|0));
+/* typing on a phone: the on-screen keyboard covers the lower half, so while a text box has focus the lobby
+   moves to the top of the screen (and layout() leaves the screen size alone until the keyboard is gone) */
+for(const id of['nick','roomCode']){const el=$(id);
+  el.addEventListener('focus',()=>{if(coarse)$('scOnline').classList.add('typing');});
+  /* wait a moment before moving things back, so a tap on 入室 lands on the button where the finger saw it */
+  el.addEventListener('blur',()=>{setTimeout(()=>{const a=document.activeElement;if(a&&(a.id==='nick'||a.id==='roomCode'))return;$('scOnline').classList.remove('typing');layout();},300);});}
 function goOnline(){show('online');renderLobby();}
 function lobbyPlayers(){return Net.peers.filter(p=>p.presence&&typeof p.presence.n==='string').sort((a,b)=>((+a.presence.j||0)-(+b.presence.j||0))||(a.peer<b.peer?-1:1));}
 function hostPeer(){const l=lobbyPlayers();return l.length?l[0]:null;}
@@ -1674,6 +1698,7 @@ async function joinRoom(code){
 function joinFromForm(){
   /* full-width letters from a Japanese IME count as their half-width twins; text with no usable
      character is refused instead of silently opening a fresh room under a random code */
+  if(document.activeElement&&document.activeElement.tagName==='INPUT')document.activeElement.blur();/* closes a phone keyboard */
   const raw=$('roomCode').value.normalize('NFKC').trim().toLowerCase();
   let code=raw.replace(/[^a-z0-9]/g,'').slice(0,6);
   if(raw&&!code){$('lobbyOut').querySelector('.note').textContent='ルームコードは半角の英数字で入力してください（例: k7mq）';return;}
@@ -1771,7 +1796,18 @@ if(window.claude&&typeof window.claude.use==='function')window.claude.use('room'
 else netUp(null);
 function menuKey(e){
   const c=e.code,ok=c==='Enter'||c==='KeyZ'||(c==='Space'&&screen==='title'),back=c==='Escape'||c==='KeyX'||c==='Backspace';
-  if(screen==='title'){if(ok&&!(e.target&&e.target.tagName==='BUTTON')){e.preventDefault();goChar('gp');}}
+  /* keyboard-only play: arrows move the highlight between the buttons of a menu, Enter / Space press the highlighted
+     one (the browser does that), and Z presses it too on the screens where Z is not already "confirm" */
+  const act=document.activeElement,onBtn=!!(screen&&act&&act.tagName==='BUTTON'&&SCREENS[screen].contains(act));
+  if(c==='KeyZ'&&onBtn&&(screen==='title'||screen==='online'||screen==='pause'||screen==='result'||screen==='stand')){e.preventDefault();act.click();return;}
+  /* nothing highlighted (for example after a click on empty space): Enter / Z still press the menu's main button */
+  if(ok&&!onBtn&&(screen==='pause'||screen==='result'||screen==='stand')){
+    const f=[...SCREENS[screen].querySelectorAll('.btn.primary')].find(b=>!b.hidden&&!b.closest('[hidden]'));
+    if(f){e.preventDefault();f.focus();f.click();}return;}
+  if(screen==='title'){
+    if(c.startsWith('Arrow'))navButtons(e);
+    else if(ok&&!(e.target&&e.target.tagName==='BUTTON')){e.preventDefault();goChar('gp');}
+  }
   else if(screen==='cup'){
     if(c==='ArrowRight'||c==='ArrowLeft')selCup.i=(selCup.i+1)%CUPS.length;
     else if(c==='ArrowUp')sel.cls=Math.max(0,sel.cls-1);else if(c==='ArrowDown')sel.cls=Math.min(2,sel.cls+1);
@@ -1783,7 +1819,7 @@ function menuKey(e){
     else if(c==='ArrowRight'||c==='ArrowLeft'){manPage=(manPage+(c==='ArrowRight'?1:MAN.length-1))%MAN.length;renderManual();}
   }
   else if(screen==='stand'){if(c.startsWith('Arrow'))navButtons(e);}
-  else if(screen==='online'){if(c==='Escape')$('oBack').click();}
+  else if(screen==='online'){if(c==='Escape')$('oBack').click();else if(c.startsWith('Arrow'))navButtons(e);else if(ok&&!onBtn)navFocus(1);}
   else if(screen==='char'){
     if(c==='ArrowRight')sel.char=(sel.char+1)%8;else if(c==='ArrowLeft')sel.char=(sel.char+7)%8;else if(c==='ArrowDown'||c==='ArrowUp')sel.char=(sel.char+4)%8;
     else if(ok){e.preventDefault();charConfirm();return;}else if(back){$('charBack').click();return;}
@@ -1798,8 +1834,40 @@ function menuKey(e){
   else if(screen===null&&race&&!race.demo&&c==='KeyM')toggleMirror();
   else if(screen===null&&race&&!race.demo&&(c==='Escape'||c==='KeyP'||c==='Enter')&&race.state!=='finish')pauseGame();
 }
-function navButtons(e){const bs=[...SCREENS[screen].querySelectorAll('.btn')];let i=bs.indexOf(document.activeElement);
-  i=(i+(e.code==='ArrowRight'||e.code==='ArrowDown'?1:bs.length-1))%bs.length;bs[i].focus();}
+/* move the keyboard highlight to the next / previous control that is actually showing on the current menu */
+function navFocus(step){
+  if(!screen)return;
+  const L=[...SCREENS[screen].querySelectorAll('button,input')].filter(el=>!el.hidden&&!el.disabled&&el.type!=='file'&&!el.closest('[hidden]'));
+  if(!L.length)return;let i=L.indexOf(document.activeElement);
+  i=i<0?(step>0?0:L.length-1):(i+step+L.length)%L.length;L[i].focus();
+}
+function navButtons(e){navFocus(e.code==='ArrowRight'||e.code==='ArrowDown'?1:-1);}
+/* ---- gamepad in the menus: d-pad / left stick = arrow keys (with key repeat), A (button 0) or Start = confirm,
+   B (button 1) = back; during a race only Start is read here (it pauses), the driving buttons are read in readRaw ---- */
+const padM={prev:{},dir:null,rep:0};
+function padMenu(now){
+  let pads=[];try{pads=navigator.getGamepads?navigator.getGamepads():[];}catch(e){}
+  const s={l:false,r:false,u:false,d:false,a:false,b:false,st:false};
+  for(const p of pads){if(!p)continue;const b=i=>!!(p.buttons[i]&&p.buttons[i].pressed),ax=p.axes[0]||0,ay=p.axes[1]||0;
+    if(b(14)||ax<-.55)s.l=true;if(b(15)||ax>.55)s.r=true;if(b(12)||ay<-.55)s.u=true;if(b(13)||ay>.55)s.d=true;
+    if(b(0))s.a=true;if(b(1))s.b=true;if(b(9))s.st=true;}
+  const P=padM.prev,edge=k=>s[k]&&!P[k],a=edge('a'),bk=edge('b'),st=edge('st');padM.prev=s;
+  const dir=s.l?'ArrowLeft':s.r?'ArrowRight':s.u?'ArrowUp':s.d?'ArrowDown':null;let fire=null;
+  if(dir!==padM.dir){padM.dir=dir;padM.rep=now+380;fire=dir;}else if(dir&&now>=padM.rep){padM.rep=now+140;fire=dir;}
+  if(screen===null){if(st&&race&&!race.demo&&race.state!=='finish')pauseGame();return;}
+  if(fire)padKey(fire);
+  if(a||st)padKey('Enter');else if(bk)padKey('Escape');
+}
+function padKey(code){
+  const act=document.activeElement,tag=act&&act.tagName,inScreen=!!(act&&SCREENS[screen]&&SCREENS[screen].contains(act));
+  if(inScreen&&tag==='INPUT'){
+    if(code.startsWith('Arrow'))navFocus(code==='ArrowDown'||code==='ArrowRight'?1:-1);
+    else if(code==='Enter'){if(act.type==='checkbox')act.click();}
+    else if(code==='Escape'&&screen==='online')$('oBack').click();
+    return;}
+  if(code==='Enter'&&inScreen&&tag==='BUTTON'){act.click();return;}
+  menuKey({code,target:act,preventDefault(){}});
+}
 $('btnStart').onclick=()=>goChar('solo');$('charOk').onclick=charConfirm;$('charBack').onclick=()=>{if(charFor==='online')goOnline();else show('title');};
 $('courseOk').onclick=startRace;$('courseBack').onclick=goChar;
 $('pResume').onclick=resume;$('pRetry').onclick=retry;$('pQuit').onclick=toTitle;
@@ -1811,10 +1879,11 @@ const MAN=[
  {t:'そうさ',html:`<table class="mtbl"><tr><th></th><th>キーボード</th><th>スマホ</th></tr>
 <tr><td>アクセル</td><td><b>↑</b> / <b>Z</b></td><td>アクセル</td></tr>
 <tr><td>ブレーキ・バック</td><td><b>↓</b> / <b>X</b></td><td>ブレーキ</td></tr>
-<tr><td>ハンドル</td><td><b>←</b> <b>→</b></td><td>◀ ▶</td></tr>
+<tr><td>ハンドル</td><td><b>A</b> <b>D</b>（<b>←</b> <b>→</b> でも可）</td><td>◀ ▶</td></tr>
 <tr><td>ジャンプ・ドリフト</td><td><b>Space</b> / <b>Shift</b></td><td>ジャンプ</td></tr>
 <tr><td>アイテムを使う</td><td><b>C</b></td><td>アイテム</td></tr>
-<tr><td>アイテムを後ろへ</td><td><b>V</b></td><td>うしろ</td></tr>
+<tr><td>アイテムを前へ</td><td><b>W</b> を押しながら <b>C</b></td><td>▲ のあとに アイテム</td></tr>
+<tr><td>アイテムを後ろへ</td><td><b>S</b> を押しながら <b>C</b>（<b>V</b> でも可）</td><td>▼ のあとに アイテム</td></tr>
 <tr><td>バックミラー</td><td><b>M</b></td><td>ミラー</td></tr>
 <tr><td>ポーズ</td><td><b>Esc</b></td><td>II</td></tr></table>
 <div class="note">ゲームパッドでも遊べます</div>`},
@@ -1825,7 +1894,7 @@ const MAN=[
 <li><em>コイン</em>　1枚ごとに最高速アップ（10枚まで）。ぶつかると減り、0枚でぶつかるとスピン</li>
 <li><em>コース</em>　黄色い矢印パネルで加速、芝生などコースの外側は大きく減速します</li></ul>`},
  {t:'アイテム',items:true,html:`<div class="mitems"></div>
-<div class="note">オイル・弾丸・ミサイルは長押しで後ろに構えてガード。<b>↑</b>を押しながら離すと前へ、<b>↓</b>で後ろへ投げます</div>`}
+<div class="note">オイル・弾丸・ミサイルは向きを選べます。<b>W</b>を押しながら使うと前へ、<b>S</b>を押しながら使うと後ろへ（ゲームパッドは十字キーの上下、スマホは ▲▼ を押してからアイテム）</div>`}
 ];
 let manPage=0;
 MAN.forEach((m,i)=>{const b=document.createElement('button');b.type='button';b.textContent=m.t;b.onclick=()=>{manPage=i;renderManual();};$('manTabs').appendChild(b);});
@@ -1866,6 +1935,7 @@ addEventListener('pageshow',()=>{if(!document.hidden)Snd.wake();});
 
 /* ===================== layout ===================== */
 function layout(){
+  const ae=document.activeElement;if(coarse&&ae&&ae.tagName==='INPUT'&&ae.type==='text')return;
   const w=innerWidth,h=innerHeight;let sw=Math.min(w,h*ASPECT),sh=sw/ASPECT;
   const st=$('stage');st.style.width=sw+'px';st.style.height=sh+'px';$('ui').style.fontSize=(sh/26)+'px';
 }
@@ -1881,6 +1951,7 @@ function render(){
 let last=performance.now(),resAt=0;
 function frame(now){
   const dt=Math.min(.05,(now-last)/1000);last=now;
+  padMenu(now);
   if(race&&!race.paused){let rem=dt;while(rem>1e-6){const h=Math.min(rem,1/120);update(h);rem-=h;}}
   render();netSend();
   if(screen==='char')drawCards(now/1000);
