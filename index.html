@@ -1230,11 +1230,20 @@ function setupOnlineRace(g){
   race.order=[...race.karts];race.karts.forEach((k,i)=>k.rank=i);
   Snd.tempo=1;updateCamera(0,true);
 }
+/* remote karts are drawn NET_DELAY ms in the past, sliding between the two received samples around that
+   moment (k.nb, stamped on the sender's clock), so uneven arrival does not show; when samples stop coming
+   the kart coasts on its last known velocity for up to 0.3 s */
+const NET_DELAY=110;
 function netFollow(k,dt){
-  const n=k.net;if(!n)return;const age=Math.min(.3,(performance.now()-n.t)/1000);
-  const tx=n.x+Math.cos(n.ma)*n.sp*age,ty=n.y+Math.sin(n.ma)*n.sp*age;
-  if(Math.abs(tx-k.x)+Math.abs(ty-k.y)>80){k.x=tx;k.y=ty;}else{const f=Math.min(1,dt*12);k.x+=(tx-k.x)*f;k.y+=(ty-k.y)*f;}
-  k.heading+=angDiff(n.h,k.heading)*Math.min(1,dt*14);k.moveA=n.ma;k.speed=n.sp;
+  const n=k.net;if(!n)return;const B=k.nb,now=performance.now();let tx,ty,th=n.h;
+  if(B&&B.length){
+    const rt=now-NET_DELAY;while(B.length>2&&B[1].t<=rt)B.shift();
+    const a=B[0],b=B[1];
+    if(b&&rt>=a.t&&rt<=b.t){const f=(rt-a.t)/Math.max(1,b.t-a.t);tx=a.x+(b.x-a.x)*f;ty=a.y+(b.y-a.y)*f;th=a.h+angDiff(b.h,a.h)*f;}
+    else{const l=b&&rt>b.t?b:a,e=clamp((rt-l.t)/1000,0,.3);tx=l.x+Math.cos(l.ma)*l.sp*e;ty=l.y+Math.sin(l.ma)*l.sp*e;th=l.h;}
+  }else{const age=Math.min(.3,(now-n.t)/1000);tx=n.x+Math.cos(n.ma)*n.sp*age;ty=n.y+Math.sin(n.ma)*n.sp*age;}
+  if(Math.abs(tx-k.x)+Math.abs(ty-k.y)>120){k.x=tx;k.y=ty;}else{const f=Math.min(1,dt*25);k.x+=(tx-k.x)*f;k.y+=(ty-k.y)*f;}
+  k.heading+=angDiff(th,k.heading)*Math.min(1,dt*18);k.moveA=n.ma;k.speed=n.sp;
   k.idx=nearestIdx(k.x,k.y,k.idx);k.prog=n.prog;k.coins=n.coins;k.finishT=n.fin;
   const f=n.fl;k.hopT=f&1?.13:0;k.drift=f&2?-1:f&4?1:0;k.boostT=f&8?.1:0;k.hyperT=f&16?.1:0;k.spinT=f&32?.1:0;k.driftCharge=f&128?1.7:f&64?.9:0;
   k.fallT=f&256?FALL_T*.5:0;k.rescueT=f&512?.1:0;k.stealthT=f&1024?.1:0;k.shrinkT=f&2048?.1:0;k.jumpT=f&4096?.1:0;k.netZ=n.z||0;
@@ -1576,7 +1585,7 @@ function showResults(){
 }
 
 /* ===================== online ===================== */
-const Net={room:null,named:null,code:'',peer:null,peers:[],j:0,lastGame:null,hits:[],base:{},sendAt:0,ready:false,pulseSeq:0,puSeen:new Map(),
+const Net={room:null,named:null,code:'',peer:null,peers:[],j:0,lastGame:null,hits:[],base:{},sendAt:0,ready:false,pulseSeq:0,puSeen:new Map(),off:new Map(),
   setBase(p){Object.assign(this.base,p);for(const k in p)if(p[k]===null)delete this.base[k];if(this.named)this.named.presence(p).catch(()=>{});}};
 const CODECH='abcdefghjkmnpqrstuvwxyz23456789';
 const cleanNick=s=>[...String(s||'')].filter(ch=>{const c=ch.codePointAt(0);return!(c<32||(c>=127&&c<160)||(c>=0x200b&&c<=0x200f)||(c>=0x2028&&c<=0x202e)||(c>=0x2060&&c<=0x206f)||c===0xfeff);}).join('').trim().slice(0,10);
@@ -1665,10 +1674,18 @@ function syncRemote(){
     if(p.sameTab)continue;
     const st=p.presence&&p.presence.st;
     if(!st||st.gid!==race.gid)continue;
+    /* place the sample on this machine's clock: sender stamp + the smallest transit gap seen from that sender
+       (creeps up slowly so a drifting clock is followed); a late packet lands in the past, where it belongs */
+    let sT=now;const ts=+st.ts;
+    if(isFinite(ts)){let o=Net.off.get(p.peer);if(!o||o.u!==p.updatedAt){const d=now-ts;o={u:p.updatedAt,v:o?Math.min(o.v+.3,d):d};Net.off.set(p.peer,o);}sT=ts+o.v;}
     if(Array.isArray(st.k))for(const e of st.k){
       if(!Array.isArray(e))continue;const k=race.karts[e[0]];
       if(!k||!k.remote||k.ownerPeer!==p.peer)continue;
-      if(!k.net||k.net.u!==p.updatedAt)k.net={u:p.updatedAt,t:now,x:+e[1]||0,y:+e[2]||0,h:+e[3]||0,sp:+e[4]||0,prog:+e[5]||0,fl:e[6]|0,coins:clamp(e[7]|0,0,10),fin:e[8]==null?null:+e[8],ma:+e[9]||0,z:clamp(+e[10]||0,0,30)};
+      if(!k.net||k.net.u!==p.updatedAt){
+        k.net={u:p.updatedAt,t:now,x:+e[1]||0,y:+e[2]||0,h:+e[3]||0,sp:+e[4]||0,prog:+e[5]||0,fl:e[6]|0,coins:clamp(e[7]|0,0,10),fin:e[8]==null?null:+e[8],ma:+e[9]||0,z:clamp(+e[10]||0,0,30)};
+        const B=k.nb||(k.nb=[]),L=B[B.length-1];
+        if(!L||sT>L.t){B.push({t:sT,x:k.net.x,y:k.net.y,h:k.net.h,ma:k.net.ma,sp:k.net.sp});if(B.length>40)B.shift();}
+      }
     }
     const seen=new Set();
     if(Array.isArray(st.o))for(const e of st.o.slice(0,24)){
@@ -1690,7 +1707,8 @@ function syncRemote(){
     if(gone){if(k.finishT!=null)race.gone.push(k);return false;}return true;});
 }
 function netSend(){
-  if(!Net.named||!race||!race.online)return;const now=performance.now();if(now-Net.sendAt<50)return;Net.sendAt=now;
+  /* 20 updates a second inside a claude.ai room (its budget); 30 a second over the direct browser-to-browser link */
+  if(!Net.named||!race||!race.online)return;const now=performance.now();if(now-Net.sendAt<(Net.room===window.PGP_P2P?30:50))return;Net.sendAt=now;
   const r=(v,d)=>Math.round(v*d)/d;
   Net.hits=Net.hits.filter(h=>race.time-h.t<2.5);
   const k=race.karts.filter(k=>k.own).map(k=>[k.slot,r(k.x,10),r(k.y,10),r(k.heading,100),r(k.speed,10),k.prog,
@@ -1698,7 +1716,7 @@ function netSend(){
     |(k.fallT>0?256:0)|(k.rescueT>0?512:0)|(k.stealthT>0?1024:0)|(k.shrinkT>0?2048:0)|(k.jumpT>0?4096:0),
     k.coins,k.finishT==null?null:r(k.finishT,100),r(k.moveA,100),Math.round(jumpZ(k))]);
   const o=race.objs.slice(-24).map(o=>[o.id,Math.max(0,TYPEI.indexOf(o.type)),r(o.x,10),r(o.y,10),r(o.a||0,100),Math.round(o.speed||0),o.fly>0?1:0]);
-  const st={gid:race.gid,k,o,h:Net.hits.slice(-12).map(h=>h.key),pu:Net.pulseSeq||0};Net.base.st=st;
+  const st={gid:race.gid,ts:Math.round(now),k,o,h:Net.hits.slice(-12).map(h=>h.key),pu:Net.pulseSeq||0};Net.base.st=st;
   Net.named.presence({st}).catch(()=>{});
 }
 $('btnOnline').onclick=()=>{goOnline();};
