@@ -1212,11 +1212,11 @@ function aiWantsItem(k){
 function readPlayer(k,dt){
   const I=readRaw();
   if(I.axis!==null)k.steerSm=I.axis;else{const t=(I.right?1:0)-(I.left?1:0);k.steerSm+=clamp(t-k.steerSm,-dt*7,dt*7);}
-  /* item button (C), the way the 16-bit kart racers did it: the item goes the moment the button is pressed,
+  /* item button (Shift), the way the 16-bit kart racers did it: the item goes the moment the button is pressed,
      and the aim key held at that moment picks the direction -
-       C alone   -> the item's normal use (oil drops behind, bullet / missile go forward)
-       W + C     -> forward  (oil is lobbed ahead)
-       S + C     -> backward (bullet / missile fly straight back)
+       Shift alone -> the item's normal use (oil drops behind, bullet / missile go forward)
+       W + Shift   -> forward  (oil is lobbed ahead)
+       S + Shift   -> backward (bullet / missile fly straight back)
      W / S are separate from the driving keys, so accelerating or braking never changes the aim.
      Gamepad: d-pad or stick up / down aim. V (touch: うしろ) always throws straight back. */
   const pressed=I.item,backKey=I.itemB,ready=!!k.item&&k.roll<=0;let use=false,dir=null;
@@ -1421,7 +1421,7 @@ function readRaw(){
   const arm=aimArm&&performance.now()<aimArm.until?aimArm.k:null;
   /* keyboard layout: A / D steer (← → also work), ↑ accelerate, ↓ brake, W / S aim the item */
   const r={left:!!(keys.KeyA||keys.ArrowLeft||touch.left),right:!!(keys.KeyD||keys.ArrowRight||touch.right),gas:!!(keys.ArrowUp||keys.KeyZ||touch.gas),
-    brake:!!(keys.ArrowDown||keys.KeyX||touch.brake),brakeBtn:!!(keys.KeyX||touch.brake),hop:!!(keys.Space||keys.ShiftLeft||keys.ShiftRight||touch.hop),item:!!(keys.KeyC||touch.item),itemB:!!(keys.KeyV||touch.itemB),up:!!(keys.KeyW||touch.aimF||arm==='aimF'),down:!!(keys.KeyS||touch.aimB||arm==='aimB'),axis:null};/* up / down = item aim (W / S), not the driving arrows */
+    brake:!!(keys.ArrowDown||keys.KeyX||touch.brake),brakeBtn:!!(keys.KeyX||touch.brake),hop:!!(keys.Space||touch.hop),item:!!(keys.ShiftLeft||keys.ShiftRight||touch.item),itemB:!!(keys.KeyV||touch.itemB),up:!!(keys.KeyW||touch.aimF||arm==='aimF'),down:!!(keys.KeyS||touch.aimB||arm==='aimB'),axis:null};/* up / down = item aim (W / S), not the driving arrows */
   let pads=[];try{pads=navigator.getGamepads?navigator.getGamepads():[];}catch(e){}
   for(const p of pads){if(!p)continue;const b=i=>p.buttons[i]&&p.buttons[i].pressed;const ax=p.axes[0]||0;
     if(Math.abs(ax)>.18)r.axis=ax;if(b(14))r.left=true;if(b(15))r.right=true;
@@ -1880,10 +1880,10 @@ const MAN=[
 <tr><td>アクセル</td><td><b>↑</b> / <b>Z</b></td><td>アクセル</td></tr>
 <tr><td>ブレーキ・バック</td><td><b>↓</b> / <b>X</b></td><td>ブレーキ</td></tr>
 <tr><td>ハンドル</td><td><b>A</b> <b>D</b>（<b>←</b> <b>→</b> でも可）</td><td>◀ ▶</td></tr>
-<tr><td>ジャンプ・ドリフト</td><td><b>Space</b> / <b>Shift</b></td><td>ジャンプ</td></tr>
-<tr><td>アイテムを使う</td><td><b>C</b></td><td>アイテム</td></tr>
-<tr><td>アイテムを前へ</td><td><b>W</b> を押しながら <b>C</b></td><td>▲ のあとに アイテム</td></tr>
-<tr><td>アイテムを後ろへ</td><td><b>S</b> を押しながら <b>C</b>（<b>V</b> でも可）</td><td>▼ のあとに アイテム</td></tr>
+<tr><td>ジャンプ・ドリフト</td><td><b>Space</b></td><td>ジャンプ</td></tr>
+<tr><td>アイテムを使う</td><td><b>Shift</b></td><td>アイテム</td></tr>
+<tr><td>アイテムを前へ</td><td><b>W</b> を押しながら <b>Shift</b></td><td>▲ のあとに アイテム</td></tr>
+<tr><td>アイテムを後ろへ</td><td><b>S</b> を押しながら <b>Shift</b>（<b>V</b> でも可）</td><td>▼ のあとに アイテム</td></tr>
 <tr><td>バックミラー</td><td><b>M</b></td><td>ミラー</td></tr>
 <tr><td>ポーズ</td><td><b>Esc</b></td><td>II</td></tr></table>
 <div class="note">ゲームパッドでも遊べます</div>`},
