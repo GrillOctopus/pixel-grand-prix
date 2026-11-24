@@ -791,7 +791,7 @@ function drawMirror(){
   mctx.drawImage(TR.sky.grad,0,0,W,HOR,0,0,MW,MHOR);
   groundInto(mBuf,MW,MH-MHOR,vx,vy,c,s,MF,MCAMH);mctx.putImageData(mImg,0,MHOR);
   const L=[];
-  const pv=(x,y)=>{const dx=x-vx,dy=y-vy,d=dx*c+dy*s;if(d<4||d>520)return null;const kk=MF/d;return{x:MW/2+(-dx*s+dy*c)*kk,y:MHOR+MCAMH*kk,k:kk,d};};
+  const pv=(x,y)=>{const dx=x-vx,dy=y-vy,d=dx*c+dy*s;if(d<9||d>520)return null;const kk=MF/d;return{x:MW/2+(-dx*s+dy*c)*kk,y:MHOR+MCAMH*kk,k:kk,d};};
   for(const o of race.karts){if(o===k)continue;const p=pv(o.x,o.y);if(p&&p.x>-20&&p.x<MW+20)L.push({p,o,t:0});}
   for(const o of race.objs){const p=pv(o.x,o.y);if(p)L.push({p,o,t:1});}
   for(const o of race.robjs.values()){const p=pv(o.x,o.y);if(p)L.push({p,o,t:1});}
@@ -818,7 +818,10 @@ function viewIndex(k){return viewIndexFrom(k,cam.x,cam.y);}
 function viewIndexFrom(k,px,py){const h=k.heading,cx=px-k.x,cy=py-k.y,lx=-cx*Math.sin(h)+cy*Math.cos(h),ly=cx*Math.cos(h)+cy*Math.sin(h);const v=Math.round(Math.atan2(lx,-ly)/TAU*16);return((v%16)+16)%16;}
 
 function drawSprites(){
-  const S=[],add=(x,y,t,o)=>{const p=proj(x,y);if(!p||p.d>1100)return;if(p.x<-60||p.x>W+60)return;S.push({p,t,o});};
+  /* NEAR: anything closer to the camera than this is skipped. A kart starting right behind the player sits almost
+     on the camera, where its sprite and ground shadow would blow up to cover the whole screen. */
+  const NEAR=16;
+  const S=[],add=(x,y,t,o)=>{const p=proj(x,y);if(!p||p.d>1100||p.d<NEAR)return;if(p.x<-60||p.x>W+60)return;S.push({p,t,o});};
   for(const d of TR.decor)add(d.x,d.y,0,d);
   race.boxes.forEach((b,i)=>{if(b.alive)add(b.x,b.y,1,i);});
   for(const c of race.coins)if(c.alive)add(c.x,c.y,2,c);
@@ -854,9 +857,11 @@ function drawKart(kt,p){
   const k=p.k,img=kt.views[viewIndex(kt)],sc=kt.shrinkT>0?.55:1,sz=KS/KPX*k*sc;
   let hop=(kt.hopT>0?Math.sin(Math.PI*kt.hopT/.26)*3.5:0)+jumpZ(kt),sink=0,alpha=1;
   if(kt.fallT>0){const q=1-kt.fallT/FALL_T;sink=TR.pit==='sky'?q*24:q*8;alpha=1-q;}
+  /* a kart coming up from behind fades in over the first stretch in front of the camera instead of popping in huge */
+  const nearF=clamp((p.d-16)/16,0,1);alpha*=nearF;
   const rescuing=kt.rescueT>0;
   if(rescuing)hop=Math.max(0,kt.remote?.5:kt.rescueT/RESCUE_T)*28+1.5;
-  if(!(kt.fallT>0)){const sh=Math.max(.35,1-hop/30);ellipse(p.x,p.y,5.2*k*sc*sh,5.2*k*sc*sh*CAMH/p.d*1.2,'rgba(0,0,0,.33)');}
+  if(!(kt.fallT>0)){const sh=Math.max(.35,1-hop/30);ellipse(p.x,p.y,5.2*k*sc*sh,5.2*k*sc*sh*CAMH/p.d*1.2,`rgba(0,0,0,${(.33*nearF).toFixed(3)})`);}
   if(kt.hyperT>0&&((race.time*18)|0)%2)alpha*=.5;
   if(kt.stealthT>0)alpha*=kt.isPlayer?.4:(((race.time*10)|0)%3?.06:.22);
   if(kt.out)alpha*=.35;
