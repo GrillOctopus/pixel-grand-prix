@@ -1212,17 +1212,22 @@ function aiWantsItem(k){
 function readPlayer(k,dt){
   const I=readRaw();
   if(I.axis!==null)k.steerSm=I.axis;else{const t=(I.right?1:0)-(I.left?1:0);k.steerSm+=clamp(t-k.steerSm,-dt*7,dt*7);}
-  /* item button (Shift), the way the 16-bit kart racers did it: the item goes the moment the button is pressed,
-     and the aim key held at that moment picks the direction -
-       Shift alone -> the item's normal use (oil drops behind, bullet / missile go forward)
-       W + Shift   -> forward  (oil is lobbed ahead)
-       S + Shift   -> backward (bullet / missile fly straight back)
+  /* item button (Shift):
+       oil / bullet / missile - pressing the button holds the item behind the kart (it blocks one hit from
+         behind); releasing it fires or drops it. The aim key held at the moment of release picks the way:
+           W held -> forward (oil is lobbed ahead), S held -> backward, neither -> the item's normal use
+           (oil drops behind, bullet / missile go forward)
+       other items (turbo, coin, drink, spring, pulse, stealth) - go off the moment the button is pressed.
      W / S are separate from the driving keys, so accelerating or braking never changes the aim.
-     Gamepad: d-pad or stick up / down aim. V (touch: うしろ) always throws straight back. */
-  const pressed=I.item,backKey=I.itemB,ready=!!k.item&&k.roll<=0;let use=false,dir=null;
-  if(backKey&&!prevBack&&ready){use=true;dir='b';}
-  else if(pressed&&!prevItem&&ready){use=true;dir=I.down&&!I.up?'b':I.up&&!I.down?'f':null;}
-  k.holding=false;
+     Gamepad: d-pad or stick up / down aim. V (touch: うしろ) always throws straight back at once. */
+  const pressed=I.item,backKey=I.itemB,ready=!!k.item&&k.roll<=0,holdable=ready&&!!HOLDABLE[k.item];let use=false,dir=null;
+  if(backKey&&!prevBack&&ready){use=true;dir='b';k.pressUsed=true;}
+  else{
+    if(pressed&&!prevItem){k.pressUsed=false;if(ready&&!holdable){use=true;k.pressUsed=true;}}
+    if(!pressed&&prevItem&&holdable&&!k.pressUsed){use=true;dir=I.down&&!I.up?'b':I.up&&!I.down?'f':null;}
+  }
+  /* a press that already used an item (e.g. stealth that steals an oil) does not also throw the new one */
+  k.holding=holdable&&pressed&&!k.pressUsed&&k.spinT<=0;
   if(use&&aimArm){aimArm=null;for(const id of['tF','tD']){const b=document.getElementById(id);if(b&&!touch[b.dataset.k])b.classList.remove('on');}}
   prevItem=pressed;prevBack=backKey;
   if(use&&!dir)dir=DEFAULT_DIR[k.item]||'f';
@@ -1881,9 +1886,9 @@ const MAN=[
 <tr><td>ブレーキ・バック</td><td><b>↓</b> / <b>X</b></td><td>ブレーキ</td></tr>
 <tr><td>ハンドル</td><td><b>A</b> <b>D</b>（<b>←</b> <b>→</b> でも可）</td><td>◀ ▶</td></tr>
 <tr><td>ジャンプ・ドリフト</td><td><b>Space</b></td><td>ジャンプ</td></tr>
-<tr><td>アイテムを使う</td><td><b>Shift</b></td><td>アイテム</td></tr>
-<tr><td>アイテムを前へ</td><td><b>W</b> を押しながら <b>Shift</b></td><td>▲ のあとに アイテム</td></tr>
-<tr><td>アイテムを後ろへ</td><td><b>S</b> を押しながら <b>Shift</b>（<b>V</b> でも可）</td><td>▼ のあとに アイテム</td></tr>
+<tr><td>アイテムを使う</td><td><b>Shift</b>（投げる・置くアイテムは押している間うしろに構え、離すと使う）</td><td>アイテム</td></tr>
+<tr><td>アイテムを前へ</td><td><b>Shift</b> を押したまま <b>W</b> を押して <b>Shift</b> を離す</td><td>▲ を押してから アイテム を離す</td></tr>
+<tr><td>アイテムを後ろへ</td><td><b>Shift</b> を押したまま <b>S</b> を押して <b>Shift</b> を離す（<b>V</b> ですぐ後ろへ）</td><td>▼ を押してから アイテム を離す</td></tr>
 <tr><td>バックミラー</td><td><b>M</b></td><td>ミラー</td></tr>
 <tr><td>ポーズ</td><td><b>Esc</b></td><td>II</td></tr></table>
 <div class="note">ゲームパッドでも遊べます</div>`},
@@ -1894,7 +1899,7 @@ const MAN=[
 <li><em>コイン</em>　1枚ごとに最高速アップ（10枚まで）。ぶつかると減り、0枚でぶつかるとスピン</li>
 <li><em>コース</em>　黄色い矢印パネルで加速、芝生などコースの外側は大きく減速します</li></ul>`},
  {t:'アイテム',items:true,html:`<div class="mitems"></div>
-<div class="note">オイル・弾丸・ミサイルは向きを選べます。<b>W</b>を押しながら使うと前へ、<b>S</b>を押しながら使うと後ろへ（ゲームパッドは十字キーの上下、スマホは ▲▼ を押してからアイテム）</div>`}
+<div class="note">オイル・弾丸・ミサイルは、ボタンを押している間カートの後ろに構えて（後ろからの攻撃を1回ふせげます）、離した時に使います。離す瞬間に<b>W</b>を押していれば前へ、<b>S</b>なら後ろへ、どちらも押していなければふつうの使い方です（ゲームパッドは十字キーの上下、スマホは ▲▼）。ほかのアイテムは押した瞬間に使います</div>`}
 ];
 let manPage=0;
 MAN.forEach((m,i)=>{const b=document.createElement('button');b.type='button';b.textContent=m.t;b.onclick=()=>{manPage=i;renderManual();};$('manTabs').appendChild(b);});
