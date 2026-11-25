@@ -45,8 +45,12 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);overflow:hi
 h2{margin:0;font-weight:400;font-size:1.25em;letter-spacing:.12em;color:var(--gold);text-shadow:.08em .08em 0 #2a1060}
 .btn{font-family:var(--jp);font-size:1em;color:var(--ink);background:var(--panel2);border:.12em solid var(--ink);padding:.3em 1.1em;box-shadow:0 .2em 0 #000;cursor:pointer;line-height:1.4}
 .btn:hover{background:#3a2e80}
-.btn:focus-visible{outline:.14em solid var(--gold);outline-offset:.14em}
-.btn.primary{background:var(--hot);border-color:#fff}
+/* the cursor: whichever control is selected takes the accent colour; everything else stays plain */
+button:focus,input:focus{outline:none}
+.screen .btn.cur{background:var(--hot);border-color:#fff}
+.screen .card.cur,.screen .ccard.cur,.screen .cup.cur{border-color:var(--hot);background:var(--panel2);box-shadow:0 0 0 .14em var(--hot)}
+.screen .seg button.cur{background:var(--hot);color:#fff}
+.screen .fld input.cur{border-color:var(--hot)}
 .btn.small{font-size:.72em;padding:.2em .8em;box-shadow:0 .15em 0 #000}
 .row{display:flex;gap:.6em;flex-wrap:wrap;justify-content:center}
 .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.45em}
@@ -114,7 +118,7 @@ h2{margin:0;font-weight:400;font-size:1.25em;letter-spacing:.12em;color:var(--go
 .cbtn{font-family:var(--px);font-size:11px;background:var(--panel);color:var(--ink);border:2px solid var(--line);padding:6px 8px;cursor:pointer}
 #fsBtn{font-family:var(--jp);font-size:13px;padding:4px 10px}
 .cbtn:hover{background:var(--panel2)}
-.cbtn:focus-visible{outline:2px solid var(--gold)}
+.cbtn.cur{background:var(--hot);border-color:#fff}
 </style>
 
 <div id="stage">
@@ -984,13 +988,19 @@ function hitKart(k){
   const lost=Math.min(k.coins,2);k.coins-=lost;burst(k.x,k.y,'#ffffff',5);coinFly(k,lost);
 }
 const near=k=>Math.hypot(k.x-cam.x,k.y-cam.y)<220;
-/* an item held behind a kart soaks up one ball/homing shot that reaches it */
+/* an item held behind a kart soaks up ONE bullet / missile that reaches it from behind; the held item is used up.
+   A shot is only caught while it is still behind the kart, so one coming from the front hits the kart as usual. */
 function heldPos(k){return{x:k.x-Math.cos(k.heading)*9,y:k.y-Math.sin(k.heading)*9};}
 function blockByHeld(x,y,owner,age){
   for(const k of race.karts){
-    if(!k.holding||!k.item||k.remote||k.out||(k===owner&&age<.5))continue;
+    if(!k.holding||!k.item||k.remote||k.out||k.spinT>0||(k===owner&&age<.5))continue;
+    const c=Math.cos(k.heading),s=Math.sin(k.heading),behind=(x-k.x)*c+(y-k.y)*s;
+    if(behind>-3)continue;
     const h=heldPos(k);
-    if(Math.abs(h.x-x)<7&&Math.abs(h.y-y)<7){k.item=null;k.holding=false;if(k.isPlayer||near(k))Snd.bump();return true;}
+    if(Math.hypot(h.x-x,h.y-y)<8){
+      k.item=null;k.holding=false;burst(h.x,h.y,['#ffffff','#ffd23f'],10);
+      if(k.isPlayer){race.msg={text:'GUARD!',t:1.2,col:'#5cf28a'};Snd.bump();}else if(near(k))Snd.bump();
+      return true;}
   }
   return false;
 }
@@ -1109,7 +1119,7 @@ function updateKart(k,inp,dt){
   if(k.boostT>0){k.boostT-=dt;top*=1.4;acc*=4;}
   if(k.hyperT>0){k.hyperT-=dt;top*=1.12;acc*=1.5;}
   let cap=top;const fast=k.boostT>0||k.hyperT>0;
-  if(surf===1&&!fast)cap*=.42;else if(surf===2)cap*=.95;
+  if(surf===1&&!fast)cap*=.5;else if(surf===2)cap*=.95;
   if(surf===4){if(k.boostT<.2&&(k.isPlayer||near(k)))Snd.boost();k.boostT=Math.max(k.boostT,.8);}
   if(gas){if(k.speed<cap)k.speed=Math.min(cap,k.speed+acc*dt*(k.speed<0?2.5:(1-.6*Math.max(0,k.speed)/cap)));}
   else if(inp.brake){k.speed=k.speed>0?Math.max(0,k.speed-280*dt):Math.max(-50,k.speed-80*dt);}
@@ -1474,7 +1484,16 @@ let charFor='solo';
 let screen='title';const sel={char:0,course:0,cls:1};
 const coarse=matchMedia('(pointer:coarse)').matches;
 if(coarse){$('pressStart').textContent='TAP START';$('keyHint').hidden=true;}
+/* the cursor colour follows keyboard / pad focus (and the last clicked control) via a .cur class, so it stays
+   visible even while the browser window itself is not the active one */
+function markCur(t){if(!t||!t.matches||!t.matches('button,input')||t.classList.contains('cur'))return;
+  document.querySelectorAll('.cur').forEach(x=>{if(x!==t)x.classList.remove('cur');});t.classList.add('cur');}
+document.addEventListener('focusin',e=>markCur(e.target));
+/* focus events are not sent while the window is in the background, so the frame loop also syncs the mark */
+function syncCur(){if(screen)markCur(document.activeElement);}
+document.addEventListener('focusout',e=>{const t=e.target;if(t&&t.classList&&t.classList.contains('cbtn'))t.classList.remove('cur');});
 function show(name){screen=name;for(const k in SCREENS)SCREENS[k].hidden=k!==name;
+  document.querySelectorAll('.cur').forEach(x=>x.classList.remove('cur'));
   $('touch').hidden=!(coarse&&name===null);
   $('corner').hidden=name===null;
   if(name===null&&document.activeElement&&document.activeElement.blur)document.activeElement.blur();
@@ -1552,7 +1571,7 @@ function refreshCourse(){
 }
 let previewsDrawn=false;
 function drawPreviews(){if(previewsDrawn)return;previewsDrawn=true;COURSES.forEach((co,i)=>{$('course'+i).querySelector('canvas').getContext('2d').drawImage(coursePreview(i),0,0);});}
-function goChar(mode){charFor=mode==='online'||mode==='battle'||mode==='gp'?mode:'solo';show('char');refreshChar();}
+function goChar(mode){charFor=mode==='online'||mode==='battle'||mode==='gp'?mode:'solo';show('char');refreshChar();if(!coarse)$('char'+sel.char).focus();}
 function charConfirm(){if(charFor==='online'){Net.setBase({c:sel.char});goOnline();}else if(charFor==='battle')startBattle();else if(charFor==='gp')goCup();else goCourse();}
 /* ---- Grand Prix: 4 races, points by finishing place, overall standings ---- */
 let gp=null;const selCup={i:0};
@@ -1563,7 +1582,7 @@ CUPS.forEach((cu,i)=>{
 });
 CLASSES.forEach((cl,i)=>{const b=document.createElement('button');b.type='button';b.textContent=cl.name;b.onclick=()=>{sel.cls=i;refreshCup();};$('cupCls').appendChild(b);});
 function refreshCup(){CUPS.forEach((c,i)=>$('cup'+i).classList.toggle('sel',i===selCup.i));$('cupCls').querySelectorAll('button').forEach((b,i)=>b.classList.toggle('sel',i===sel.cls));}
-function goCup(){show('cup');refreshCup();}
+function goCup(){show('cup');refreshCup();if(!coarse)$('cup'+selCup.i).focus();}
 function startGP(){
   const others=[...Array(8).keys()].filter(i=>i!==sel.char).sort(()=>Math.random()-.5);
   gp={cup:selCup.i,cls:sel.cls,round:0,roster:[sel.char,...others],pts:Array(8).fill(0),last:Array(8).fill(0),awarded:false};
@@ -1605,7 +1624,7 @@ $('cupOk').onclick=startGP;$('cupBack').onclick=()=>goChar('gp');
 $('rNext').onclick=showStandings;
 $('standNext').onclick=()=>{if(gp.round>=CUPS[gp.cup].courses.length-1){gp=null;toTitle();}else{gp.round++;startGPRace();}};
 $('standQuit').onclick=()=>{gp=null;toTitle();};
-function goCourse(){drawPreviews();show('course');refreshCourse();}
+function goCourse(){drawPreviews();show('course');refreshCourse();if(!coarse)$('course'+sel.course).focus();}
 let lastMode='race';
 function startRace(){Snd.unlock();lastMode='race';setupRace(sel.course,sel.char,sel.cls,false);show(null);}
 function startBattle(){Snd.unlock();lastMode='battle';setupBattle(sel.char);show(null);}
@@ -1804,38 +1823,24 @@ function menuKey(e){
   /* keyboard-only play: arrows move the highlight between the buttons of a menu, Enter / Space press the highlighted
      one (the browser does that), and Z presses it too on the screens where Z is not already "confirm" */
   const act=document.activeElement,onBtn=!!(screen&&act&&act.tagName==='BUTTON'&&SCREENS[screen].contains(act));
-  if(c==='KeyZ'&&onBtn&&(screen==='title'||screen==='online'||screen==='pause'||screen==='result'||screen==='stand')){e.preventDefault();act.click();return;}
-  /* nothing highlighted (for example after a click on empty space): Enter / Z still press the menu's main button */
-  if(ok&&!onBtn&&(screen==='pause'||screen==='result'||screen==='stand')){
+  /* W / S (and ↑ ↓) move the cursor to the row above / below, A / D (and ← →) along the row. On the driver,
+     course and cup screens the cards follow the cursor, so moving onto a card also picks it. */
+  const dir=c==='ArrowUp'||c==='KeyW'?[0,-1]:c==='ArrowDown'||c==='KeyS'?[0,1]:c==='ArrowLeft'||c==='KeyA'?[-1,0]:c==='ArrowRight'||c==='KeyD'?[1,0]:null;
+  if(screen==='manual'&&dir&&dir[0]){e.preventDefault();manPage=(manPage+(dir[0]>0?1:MAN.length-1))%MAN.length;renderManual();return;}
+  if(screen&&dir){e.preventDefault();spatialNav(dir[0],dir[1]);return;}
+  /* a highlighted control: Enter / Space press it (the browser does that), Z presses it too */
+  if(ok&&onBtn){if(c==='KeyZ'){e.preventDefault();act.click();}return;}
+  /* nothing highlighted (for example after a click on empty space): Enter / Z still do the screen's main action */
+  if(ok&&(screen==='pause'||screen==='result'||screen==='stand')){
     const f=[...SCREENS[screen].querySelectorAll('.btn.primary')].find(b=>!b.hidden&&!b.closest('[hidden]'));
     if(f){e.preventDefault();f.focus();f.click();}return;}
-  if(screen==='title'){
-    if(c.startsWith('Arrow'))navButtons(e);
-    else if(ok&&!(e.target&&e.target.tagName==='BUTTON')){e.preventDefault();goChar('gp');}
-  }
-  else if(screen==='cup'){
-    if(c==='ArrowRight'||c==='ArrowLeft')selCup.i=(selCup.i+1)%CUPS.length;
-    else if(c==='ArrowUp')sel.cls=Math.max(0,sel.cls-1);else if(c==='ArrowDown')sel.cls=Math.min(2,sel.cls+1);
-    else if(ok){e.preventDefault();startGP();return;}else if(back){goChar('gp');return;}
-    refreshCup();
-  }
-  else if(screen==='manual'){
-    if(ok||back){e.preventDefault();show('title');}
-    else if(c==='ArrowRight'||c==='ArrowLeft'){manPage=(manPage+(c==='ArrowRight'?1:MAN.length-1))%MAN.length;renderManual();}
-  }
-  else if(screen==='stand'){if(c.startsWith('Arrow'))navButtons(e);}
-  else if(screen==='online'){if(c==='Escape')$('oBack').click();else if(c.startsWith('Arrow'))navButtons(e);else if(ok&&!onBtn)navFocus(1);}
-  else if(screen==='char'){
-    if(c==='ArrowRight')sel.char=(sel.char+1)%8;else if(c==='ArrowLeft')sel.char=(sel.char+7)%8;else if(c==='ArrowDown'||c==='ArrowUp')sel.char=(sel.char+4)%8;
-    else if(ok){e.preventDefault();charConfirm();return;}else if(back){$('charBack').click();return;}
-    refreshChar();
-  }else if(screen==='course'){
-    const NC=COURSES.length;if(c==='ArrowRight')sel.course=(sel.course+1)%NC;else if(c==='ArrowLeft')sel.course=(sel.course+NC-1)%NC;
-    else if(c==='ArrowUp')sel.cls=Math.max(0,sel.cls-1);else if(c==='ArrowDown')sel.cls=Math.min(2,sel.cls+1);
-    else if(ok){e.preventDefault();startRace();return;}else if(back){goChar();return;}
-    refreshCourse();
-  }else if(screen==='pause'){if(c==='Escape'||c==='KeyP')resume();else if(c.startsWith('Arrow'))navButtons(e);}
-  else if(screen==='result'){if(c.startsWith('Arrow'))navButtons(e);}
+  if(screen==='title'){if(ok){e.preventDefault();goChar('gp');}}
+  else if(screen==='cup'){if(ok){e.preventDefault();startGP();}else if(back)goChar('gp');}
+  else if(screen==='manual'){if(ok||back){e.preventDefault();show('title');}}
+  else if(screen==='online'){if(c==='Escape')$('oBack').click();else if(ok)navFocus(1);}
+  else if(screen==='char'){if(ok){e.preventDefault();charConfirm();}else if(back)$('charBack').click();}
+  else if(screen==='course'){if(ok){e.preventDefault();startRace();}else if(back)goChar();}
+  else if(screen==='pause'){if(c==='Escape'||c==='KeyP')resume();}
   else if(screen===null&&race&&!race.demo&&c==='KeyM')toggleMirror();
   else if(screen===null&&race&&!race.demo&&(c==='Escape'||c==='KeyP'||c==='Enter')&&race.state!=='finish')pauseGame();
 }
@@ -1847,6 +1852,35 @@ function navFocus(step){
   i=i<0?(step>0?0:L.length-1):(i+step+L.length)%L.length;L[i].focus();
 }
 function navButtons(e){navFocus(e.code==='ArrowRight'||e.code==='ArrowDown'?1:-1);}
+/* move the cursor by screen position: up / down go to the nearest row above / below (then the closest item in it),
+   left / right stay in the row (falling back to the previous / next control when the row ends) */
+function menuControls(){return[...SCREENS[screen].querySelectorAll('button,input')].filter(el=>!el.hidden&&!el.disabled&&el.type!=='file'&&!el.closest('[hidden]')&&el.getClientRects().length);}
+function pickOnCursor(el){
+  if(el.matches('.card,.ccard,.cup')){if(!el.classList.contains('sel'))el.click();}
+  else if(el.closest('.seg'))el.click();
+}
+function cursorStart(){
+  const s=SCREENS[screen];
+  return s.querySelector('.card.sel,.ccard.sel,.cup.sel')||[...s.querySelectorAll('.btn.primary')].find(b=>!b.hidden&&!b.closest('[hidden]'))||menuControls()[0];
+}
+function spatialNav(dx,dy){
+  if(!screen)return;const L=menuControls();if(!L.length)return;
+  const cur=document.activeElement;
+  if(!L.includes(cur)){const s=cursorStart();if(s)s.focus({preventScroll:false});return;}
+  const r=cur.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
+  const C=L.filter(el=>el!==cur).map(el=>{const q=el.getBoundingClientRect();return{el,x:q.left+q.width/2,y:q.top+q.height/2,h:q.height};});
+  let best=null;
+  if(dy){
+    const tol=Math.max(6,r.height*.45),cand=C.filter(o=>dy<0?o.y<cy-tol:o.y>cy+tol);
+    if(cand.length){const rowY=cand.reduce((m,o)=>Math.abs(o.y-cy)<Math.abs(m-cy)?o.y:m,cand[0].y);
+      best=cand.filter(o=>Math.abs(o.y-rowY)<Math.max(8,o.h*.5)).reduce((b,o)=>!b||Math.abs(o.x-cx)<Math.abs(b.x-cx)?o:b,null);}
+  }else{
+    const cand=C.filter(o=>Math.abs(o.y-cy)<Math.max(8,r.height*.6)&&(dx<0?o.x<cx-2:o.x>cx+2));
+    best=cand.reduce((b,o)=>!b||Math.abs(o.x-cx)<Math.abs(b.x-cx)?o:b,null);
+    if(!best){navFocus(dx);const n=document.activeElement;if(n&&n!==cur)pickOnCursor(n);return;}
+  }
+  if(best){best.el.focus();pickOnCursor(best.el);}
+}
 /* ---- gamepad in the menus: d-pad / left stick = arrow keys (with key repeat), A (button 0) or Start = confirm,
    B (button 1) = back; during a race only Start is read here (it pauses), the driving buttons are read in readRaw ---- */
 const padM={prev:{},dir:null,rep:0};
@@ -1958,7 +1992,7 @@ function frame(now){
   const dt=Math.min(.05,(now-last)/1000);last=now;
   padMenu(now);
   if(race&&!race.paused){let rem=dt;while(rem>1e-6){const h=Math.min(rem,1/120);update(h);rem-=h;}}
-  render();netSend();
+  render();netSend();syncCur();
   if(screen==='char')drawCards(now/1000);
   if(screen==='result'&&race&&race.online&&now-resAt>1000){resAt=now;renderResults();}
   const live=race&&!race.demo&&!race.paused&&screen===null&&race.player&&race.state!=='countdown'?race.player:null;
